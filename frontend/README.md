@@ -10,17 +10,25 @@ A simple workout tracker built with React and Vite. Log exercises with sets, rep
 - Stats bar: total workouts logged, workouts this week, total volume
 - Persists between sessions using `localStorage`
 
-## Getting started
+## Getting Started
 
+### Using Docker (Recommended)
+Run the frontend container:
+```
+docker compose up --build frontend
+```
+Then open http://localhost in your browser.
+
+### Local Development (Without Docker)
+Install dependencies and start the Vite dev server:
 ```bash
 npm install
 npm run dev
 ```
+Then open the local URL printed in your terminal (typically http://localhost:5173).
 
-Then open the printed local URL in your browser.
-
-## Build
-
+To test the production build bundle locally
 ```bash
 npm run build
+npx vite preview
 ```
