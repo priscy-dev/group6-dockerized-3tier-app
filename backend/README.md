@@ -363,7 +363,6 @@ curl -b cookies.txt -X POST http://localhost:7000/api/v1/workouts \
         }
       }'
 ```
-
 **Response (200):**
 ```json
 {
