@@ -1,0 +1,13 @@
+{
+  "app": {
+    "port": 7000,
+    "nodeEnv": "production",
+    "logLevel": "info",
+    "client_url": "http://localhost:8080"
+  },
+  "mongo": {
+    "host": "mongo",
+    "port": 27017,
+    "authSource": "admin"
+  }
+}

@@ -22,6 +22,7 @@ FROM nginx:alpine
 
 # Copy the static production build from the build stage to Nginx's default HTML directory
 COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose HTTP port 80 so the container can accept web traffic
 EXPOSE 80

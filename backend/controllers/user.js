@@ -55,7 +55,7 @@ async function registerUser(req, res, next) {
     res.cookie("jwt", token, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      sameSite: "lax",
       maxAge: 60 * 60 * 1000,
     });
 
@@ -98,12 +98,12 @@ async function login(req, res, next) {
     }
 
     const tokenObject = issueJWT(user);
-    const isProduction = (environment.NODE_ENV = "production");
+    const isProduction = environment.NODE_ENV === "production";
 
     res.cookie("jwt", tokenObject.token, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      sameSite: "lax",
       maxAge: 60 * 60 * 1000,
     });
 
@@ -153,7 +153,7 @@ function logOut(req, res) {
   res.clearCookie("jwt", {
     httpOnly: true,
     secure: isProduction, // Must be true to match your HTTPS production setup
-    sameSite: "none", // Must match the login config exactly
+    sameSite: "lax",
   });
 
   return res

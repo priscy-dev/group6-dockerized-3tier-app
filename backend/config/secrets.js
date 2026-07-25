@@ -45,6 +45,10 @@ async function loadConfig() {
 async function readSecret(name) {
   const envKey = name.toUpperCase();
 
+  if (process.env[envKey] !== undefined) {
+    return process.env[envKey];
+  }
+
   // Detect Docker
   const isDocker = await fs
     .access("/.dockerenv")
@@ -61,10 +65,6 @@ async function readSecret(name) {
   }
 
   // 2. If running locally → return env value if present, or empty string for optional secrets
-  if (process.env[envKey] !== undefined) {
-    return process.env[envKey];
-  }
-
   // Mandatory secrets (JWT keys) should still throw if missing
   if (name.startsWith("jwt_")) {
     throw new Error(

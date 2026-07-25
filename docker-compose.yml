@@ -1,49 +1,61 @@
-# Defines the services (containers) that make up the 3-tier application
 services:
-  # Tier 1: Frontend (Your React + Vite application)
   frontend:
-    # Build the image using the Dockerfile in the current directory
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    # Set the container name for easier identification
     container_name: fitness_frontend
-    # Map port 80 of your host machine to port 80 in the Nginx container
     ports:
-      - "80:80"
-    # Ensure the frontend starts after the backend is created
-    # depends_on:
-    #    - backend
-    # # Automatically restart the container if it crashes
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
-#   # Tier 2: Backend (Placeholder for the API service)
-#   backend:
-#     # Uses a placeholder image until the real API service code is ready
-#     image: alpine
-#     container_name: fitness_backend
-#     # Temporary command to keep the container running
-#     command: tail -f /dev/null
-#     # Connects backend to the database service
-#     depends_on:
-#       - database
-#     restart: unless-stopped
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fitness_backend
+    environment:
+      # Local runs use HTTP, so Secure cookies must be disabled. The AWS
+      # deployment supplies NODE_ENV=production only after HTTPS is enabled.
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 7000
+      HOST: 0.0.0.0
+      CLIENT_URL: http://localhost:8080
+      LOG_PRETTY: "false"
+    volumes:
+      - ./backend/configs/app_config.json:/run/configs/app_config:ro
+      - ./backend/secrets/jwt_private_key:/run/secrets/jwt_private_key:ro
+      - ./backend/secrets/jwt_public_key:/run/secrets/jwt_public_key:ro
+      - ./backend/secrets/db_username:/run/secrets/db_username:ro
+      - ./backend/secrets/db_password:/run/secrets/db_password:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
 
-#   # Tier 3: Database (Database service, e.g., PostgreSQL)
-#   database:
-#     # Uses the official PostgreSQL image as an example database tier
-#     image: postgres:15-alpine
-#     container_name: fitness_database
-#     # Environment variables to configure the database credentials
-#     environment:
-#       POSTGRES_USER: user
-#       POSTGRES_PASSWORD: password
-#       POSTGRES_DB: fitness_db
-#     # Persist database data on host machine so it survives container restarts
-#     volumes:
-#       - db_data:/var/lib/postgresql/data
-#     restart: unless-stopped
+  mongo:
+    image: mongo:7
+    container_name: fitness_mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME_FILE: /run/secrets/db_username
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - mongo_data:/data/db
+      - ./backend/secrets/db_username:/run/secrets/db_username:ro
+      - ./backend/secrets/db_password:/run/secrets/db_password:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
-# # Named volumes used for persistent data storage
-# volumes:
-#   db_data:
+volumes:
+  mongo_data:

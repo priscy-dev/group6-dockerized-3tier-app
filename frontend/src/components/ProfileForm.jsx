@@ -1,25 +1,38 @@
 import { useState } from 'react'
 
-const EMPTY_FORM = { name: '', age: '', sex: 'female', weight: '' }
+const EMPTY_FORM = { name: '', username: '', password: '', age: '', sex: 'Female', weight: '' }
 
-export function ProfileForm({ profile, onSave }) {
+export function ProfileForm({ profile, onSave, onError }) {
   const [form, setForm] = useState(profile ?? EMPTY_FORM)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   function handleChange(e) {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.name.trim() || !form.age || !form.weight) return
+    if (!form.name.trim() || !form.age || !form.weight || (!profile && (!form.username.trim() || form.password.length < 8))) return
 
-    onSave({
+    const value = {
       name: form.name.trim(),
+      username: form.username.trim(),
+      password: form.password,
       age: Number(form.age),
       sex: form.sex,
       weight: Number(form.weight),
-    })
+    }
+
+    try {
+      setIsSubmitting(true)
+      onError?.('')
+      await onSave(value)
+    } catch (error) {
+      onError?.(error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -43,11 +56,29 @@ export function ProfileForm({ profile, onSave }) {
           required
         />
       </div>
+      {!profile && <div className="profile-form-row">
+        <input
+          name="username"
+          placeholder="Username"
+          value={form.username}
+          onChange={handleChange}
+          required
+        />
+        <input
+          name="password"
+          type="password"
+          minLength="8"
+          placeholder="Password (8+ characters)"
+          value={form.password}
+          onChange={handleChange}
+          required
+        />
+      </div>}
       <div className="profile-form-row">
         <select name="sex" value={form.sex} onChange={handleChange}>
-          <option value="female">Female</option>
-          <option value="male">Male</option>
-          <option value="other">Other</option>
+          <option value="Female">Female</option>
+          <option value="Male">Male</option>
+          <option value="Others">Other</option>
         </select>
         <input
           name="weight"
@@ -60,8 +91,8 @@ export function ProfileForm({ profile, onSave }) {
           required
         />
       </div>
-      <button type="submit">
-        {profile ? 'Update plan' : 'Generate my 5-day plan'}
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? 'Creating account…' : profile ? 'Update plan' : 'Create account and generate plan'}
       </button>
     </form>
   )
