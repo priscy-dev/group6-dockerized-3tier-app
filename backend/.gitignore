@@ -1,6 +1,7 @@
 /node_modules
 /id_rsa_pub.pem
 /id_rsa_priv.pem
+/secrets/
 
 # Environment files
 .env

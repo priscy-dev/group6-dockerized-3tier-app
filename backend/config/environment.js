@@ -19,7 +19,6 @@ const url = hasAuth
   ? `mongodb://${mongoUsername}:${mongoPassword}@${host}:${port}/?authSource=${authSource}`
   : `mongodb://${host}:${port}/`;
 
-console.log("👉 Generated DB URL:", url); // Add this line!
 const environment = {
   NODE_ENV: process.env.NODE_ENV || config.nodeEnv,
   PORT: Number(process.env.PORT || config.port),
@@ -27,7 +26,7 @@ const environment = {
   HOST: process.env.HOST || "localhost",
   LOG_LEVEL: process.env.LOG_LEVEL || config.logLevel,
 
-  DATABASE_URL: url || process.env.DATABASE_URL,
+  DATABASE_URL: process.env.DATABASE_URL || url,
 
   PRIVATE_KEY: config.jwtPrivateKey || process.env.JWT_PRIVATE_KEY,
   PUBLIC_KEY: config.jwtPublicKey || process.env.JWT_PUBLIC_KEY,

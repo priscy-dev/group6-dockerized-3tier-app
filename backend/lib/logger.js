@@ -3,7 +3,9 @@ import environment from "../config/environment.js";
 
 const logger = pino({
   level: environment.LOG_LEVEL,
-  transport: !environment.isProduction
+  // Containers write JSON to stdout for Docker/CloudWatch. Set LOG_PRETTY=true
+  // only for a local Node.js run where the dev dependency is installed.
+  transport: process.env.LOG_PRETTY === "true"
     ? {
         target: "pino-pretty",
         options: {

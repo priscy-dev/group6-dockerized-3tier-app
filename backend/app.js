@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import { config } from "dotenv";
 import rateLimit from "express-rate-limit";
 import compression from "compression";
+import environment from "./config/environment.js";
 
 import UserRouter from "./routes/user.js";
 import passportConfig from "./config/passport-user.js";
@@ -30,10 +31,12 @@ app.use(
 //cors
 app.use(
   Cors({
-    origin: ["http://localhost:5173"],
+    origin: environment.CLIENT_URL,
     credentials: true,
   }),
 );
+
+app.get("/health", (_req, res) => res.status(200).json({ status: "ok" }));
 
 //Body Prasing
 app.use(express.urlencoded({ extended: false }));
