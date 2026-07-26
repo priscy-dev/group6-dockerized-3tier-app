@@ -1,0 +1,8 @@
+# Production Docker Compose configuration for deployment on remote VM
+services:
+  frontend:
+    image: ${DOCKERHUB_USERNAME}/fitness-frontend:${IMAGE_TAG:-latest}
+    container_name: fitness_frontend_prod
+    ports:
+      - "80:80"
+    restart: unless-stopped

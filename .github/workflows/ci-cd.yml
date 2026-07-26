@@ -1,0 +1,194 @@
+# =============================================================================
+# Fitness Tracker Frontend -- CI/CD Pipeline
+# =============================================================================
+# Workflow Stages:
+#   validate ---> build-and-push ---> deploy
+#
+# TRIGGER MATRIX:
+#   * Pull request to main or ci-cd: Validate stage only (lint + build check).
+#   * Push to main or ci-cd:         Validate -> Build & Push -> Deploy.
+#   * Manual run (workflow_dispatch): Deploy only, using a specified git short SHA
+#                                    to execute a instant ROLLBACK.
+#
+# GITHUB SECRETS REQUIRED (Set in GitHub -> Settings -> Secrets and variables -> Actions):
+#   - DOCKERHUB_USERNAME : Your Docker Hub username / namespace
+#   - DOCKERHUB_TOKEN    : Docker Hub access token (Personal Access Token)
+#   - VM_HOST            : Public IP address of the target deployment VM
+#   - VM_USER            : SSH login username for the VM (e.g., ubuntu, azureuser)
+#   - VM_SSH_KEY         : Private SSH key (full PEM content)
+#   - VM_SSH_PORT        : (Optional) Custom SSH port (defaults to 22 if omitted)
+# =============================================================================
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, ci-cd]
+  pull_request:
+    branches: [main, ci-cd]
+  workflow_dispatch:
+    inputs:
+      rollback_tag:
+        description: "Image tag (git short SHA) to deploy. Use this to ROLL BACK to a known-good version."
+        required: true
+        type: string
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/fitness-frontend
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # STAGE 1 -- VALIDATE
+  # Lint and build the frontend application code to verify code quality before pushing.
+  # ---------------------------------------------------------------------------
+  validate:
+    name: Lint & build (frontend)
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Verify build compilation
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # STAGE 2 -- BUILD & PUSH
+  # Build Docker image and push to Docker Hub with short SHA and latest tags.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & push Docker image
+    needs: validate
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci-cd')
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compute version tag (git short SHA)
+        id: vars
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # STAGE 3 -- DEPLOY
+  # Deploy production compose configuration to the target VM over SSH.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Production VM
+    needs: build-and-push
+    if: >
+      always() &&
+      (
+        (github.event_name == 'push' && needs.build-and-push.result == 'success') ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve deployment tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.rollback_tag || needs.build-and-push.outputs.image_tag }}"
+          if [ -z "$TAG" ]; then
+            echo "::error::No image tag available for deployment. Provide rollback_tag on manual execution."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Deploying image tag: $TAG"
+
+      - name: Transfer production docker-compose file to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_SSH_PORT || 22 }}
+          source: docker-compose.prod.yml
+          target: ~/app
+
+      - name: Deploy container via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_SSH_PORT || 22 }}
+          envs: IMAGE_TAG,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
+          script: |
+            set -e
+            cd ~/app
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            export IMAGE_TAG DOCKERHUB_USERNAME
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            echo "$IMAGE_TAG" > ~/app/CURRENT_VERSION
+            docker image prune -f
+            docker logout
+            echo "==== Currently Deployed Version ===="
+            cat ~/app/CURRENT_VERSION
+            docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Perform deployment smoke test
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "http://${{ secrets.VM_HOST }}" >/dev/null; then
+              echo "Deployment smoke test passed on attempt $i!"
+              exit 0
+            fi
+            echo "Attempt $i: Site not responsive yet. Retrying in 5 seconds..."
+            sleep 5
+          done
+          echo "::error::Smoke test failed: Site did not respond on port 80."
+          exit 1
