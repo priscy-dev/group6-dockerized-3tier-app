@@ -97,8 +97,9 @@ data "aws_iam_policy_document" "github_trust" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repository}:ref:refs/heads/main",
-        "repo:${var.github_repository}:ref:refs/heads/ci-cd"
+        "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}:ref:refs/heads/main",
+        "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}:ref:refs/heads/ci-cd",
+        "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}:environment:production"
       ]
     }
   }
@@ -116,7 +117,7 @@ data "aws_iam_policy_document" "github_deploy" {
   }
   statement {
     actions = [
-      "ecr:BatchCheckLayerAvailability", "ecr:CompleteLayerUpload",
+      "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:CompleteLayerUpload",
       "ecr:GetDownloadUrlForLayer", "ecr:InitiateLayerUpload",
       "ecr:PutImage", "ecr:UploadLayerPart"
     ]

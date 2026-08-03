@@ -15,8 +15,12 @@ const { host, port, authSource } = config.mongo;
 const hasAuth =
   Boolean(mongoUsername?.trim()) && Boolean(mongoPassword?.trim());
 
+const encodedMongoUsername = encodeURIComponent(mongoUsername || "");
+const encodedMongoPassword = encodeURIComponent(mongoPassword || "");
+const encodedAuthSource = encodeURIComponent(authSource || "admin");
+
 const url = hasAuth
-  ? `mongodb://${mongoUsername}:${mongoPassword}@${host}:${port}/?authSource=${authSource}`
+  ? `mongodb://${encodedMongoUsername}:${encodedMongoPassword}@${host}:${port}/?authSource=${encodedAuthSource}`
   : `mongodb://${host}:${port}/`;
 
 const environment = {
