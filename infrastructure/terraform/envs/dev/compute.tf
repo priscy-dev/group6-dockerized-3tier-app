@@ -107,7 +107,7 @@ resource "aws_instance" "database" {
   root_block_device {
     encrypted   = true
     volume_type = "gp3"
-    volume_size = 20
+    volume_size = 30
   }
   ebs_block_device {
     device_name           = "/dev/sdf"
