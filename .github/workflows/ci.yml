@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate application
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Build backend container
+        run: docker build --file backend/Dockerfile --tag fitness-backend:validation backend
+      - uses: hashicorp/setup-terraform@v3
+      - name: Check Terraform formatting
+        run: terraform -chdir=infrastructure/terraform/envs/dev fmt -check -recursive
+      - name: Initialize Terraform without remote state
+        run: terraform -chdir=infrastructure/terraform/envs/dev init -backend=false
+      - name: Validate Terraform
+        run: terraform -chdir=infrastructure/terraform/envs/dev validate

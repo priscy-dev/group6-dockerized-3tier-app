@@ -147,6 +147,45 @@ async function userProfile(req, res, next) {
   }
 }
 
+async function updateUserProfile(req, res, next) {
+  try {
+    const { username } = req.user;
+    const { fullname, age, sex, weight } = req.body;
+
+    if (!fullname || age === undefined || weight === undefined) {
+      return res.status(400).json({ success: false, msg: "Required fields missing" });
+    }
+
+    const user = await Users.findOneAndUpdate(
+      { username },
+      {
+        fullname: String(fullname).trim(),
+        age: Number(age),
+        sex: sex || "Others",
+        weight: Number(weight),
+      },
+      { new: true, runValidators: true },
+    ).select("-salt -hash");
+
+    if (!user) {
+      return res.status(404).json({ success: false, msg: "User not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        fullname: user.fullname,
+        username: user.username,
+        age: user.age,
+        weight: user.weight,
+        sex: user.sex,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 function logOut(req, res) {
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -160,4 +199,4 @@ function logOut(req, res) {
     .status(200)
     .json({ success: true, msg: "Logged out successfully" });
 }
-export { registerUser, login, userProfile, logOut };
+export { registerUser, login, userProfile, updateUserProfile, logOut };

@@ -1,99 +1,31 @@
-import { useState } from 'react'
-
-const EMPTY_FORM = { name: '', username: '', password: '', age: '', sex: 'Female', weight: '' }
+import { useEffect, useState } from 'react'
 
 export function ProfileForm({ profile, onSave, onError }) {
-  const [form, setForm] = useState(profile ?? EMPTY_FORM)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [form, setForm] = useState(profile)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => setForm(profile), [profile])
+  const change = (event) => setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
 
-  function handleChange(e) {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    if (!form.name.trim() || !form.age || !form.weight || (!profile && (!form.username.trim() || form.password.length < 8))) return
-
-    const value = {
-      name: form.name.trim(),
-      username: form.username.trim(),
-      password: form.password,
-      age: Number(form.age),
-      sex: form.sex,
-      weight: Number(form.weight),
-    }
-
+  async function submit(event) {
+    event.preventDefault()
     try {
-      setIsSubmitting(true)
+      setBusy(true)
       onError?.('')
-      await onSave(value)
+      await onSave({ ...form, name: form.name.trim(), age: Number(form.age), weight: Number(form.weight) })
     } catch (error) {
       onError?.(error.message)
     } finally {
-      setIsSubmitting(false)
+      setBusy(false)
     }
   }
 
   return (
-    <form className="profile-form" onSubmit={handleSubmit}>
-      <h2>Your Profile</h2>
-      <div className="profile-form-row">
-        <input
-          name="name"
-          placeholder="Name"
-          value={form.name}
-          onChange={handleChange}
-          required
-        />
-        <input
-          name="age"
-          type="number"
-          min="0"
-          placeholder="Age"
-          value={form.age}
-          onChange={handleChange}
-          required
-        />
-      </div>
-      {!profile && <div className="profile-form-row">
-        <input
-          name="username"
-          placeholder="Username"
-          value={form.username}
-          onChange={handleChange}
-          required
-        />
-        <input
-          name="password"
-          type="password"
-          minLength="8"
-          placeholder="Password (8+ characters)"
-          value={form.password}
-          onChange={handleChange}
-          required
-        />
-      </div>}
-      <div className="profile-form-row">
-        <select name="sex" value={form.sex} onChange={handleChange}>
-          <option value="Female">Female</option>
-          <option value="Male">Male</option>
-          <option value="Others">Other</option>
-        </select>
-        <input
-          name="weight"
-          type="number"
-          min="0"
-          step="0.5"
-          placeholder="Weight (kg)"
-          value={form.weight}
-          onChange={handleChange}
-          required
-        />
-      </div>
-      <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Creating account…' : profile ? 'Update plan' : 'Create account and generate plan'}
-      </button>
+    <form className="profile-form" onSubmit={submit}>
+      <span className="eyebrow">Settings</span><h2>Your profile</h2>
+      <label>Name<input name="name" value={form.name} onChange={change} required /></label>
+      <div className="profile-form-row"><label>Age<input name="age" type="number" min="1" value={form.age} onChange={change} required /></label><label>Weight (kg)<input name="weight" type="number" min="1" step="0.5" value={form.weight} onChange={change} required /></label></div>
+      <label>Sex<select name="sex" value={form.sex} onChange={change}><option>Female</option><option>Male</option><option value="Others">Other</option></select></label>
+      <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</button>
     </form>
   )
 }
