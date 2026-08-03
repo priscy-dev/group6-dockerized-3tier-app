@@ -38,6 +38,26 @@ variable "github_repository" {
   }
 }
 
+variable "github_repository_owner_id" {
+  description = "Immutable GitHub numeric ID of the repository owner, used to restrict the OIDC deployment role."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_owner_id))
+    error_message = "github_repository_owner_id must contain only digits."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Immutable GitHub numeric repository ID, used to restrict the OIDC deployment role."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must contain only digits."
+  }
+}
+
 variable "application_instance_type" {
   type    = string
   default = "t3.small"

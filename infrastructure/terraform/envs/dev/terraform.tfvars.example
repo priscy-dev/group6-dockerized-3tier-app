@@ -7,4 +7,6 @@ application_domain_name = "juwonfitness.wisdomuwadiae.com"
 route53_hosted_zone_id  = "Z07705643VYPNGIJPX8DD"
 
 # Replace with the repository that contains this workflow.
-github_repository = "YOUR_GITHUB_OWNER/group6-dockerized-3tier-app"
+github_repository          = "YOUR_GITHUB_OWNER/group6-dockerized-3tier-app"
+github_repository_owner_id = "YOUR_GITHUB_OWNER_NUMERIC_ID"
+github_repository_id       = "YOUR_GITHUB_REPOSITORY_NUMERIC_ID"
