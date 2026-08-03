@@ -89,4 +89,26 @@ async function getUserWorkoutPlan(req, res) {
   }
 }
 
-export { addWorkout, getUserWorkoutPlan };
+async function deleteWorkout(req, res) {
+  const username = req.user?.username;
+  const { id } = req.params;
+
+  try {
+    const plan = await UserWorkoutPlan.findOneAndUpdate(
+      { username },
+      { $pull: { workouts: { id } } },
+      { new: true },
+    );
+
+    if (!plan) {
+      return res.status(404).json({ success: false, message: "Workout plan not found." });
+    }
+
+    return res.status(200).json({ success: true, data: plan });
+  } catch (error) {
+    console.error("Error deleting workout:", error);
+    return res.status(500).json({ success: false, message: "Server error while deleting workout." });
+  }
+}
+
+export { addWorkout, getUserWorkoutPlan, deleteWorkout };

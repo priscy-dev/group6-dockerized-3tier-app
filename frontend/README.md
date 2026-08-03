@@ -1,6 +1,6 @@
 # Fitness Tracker
 
-A simple workout tracker built with React and Vite. Log exercises with sets, reps, and weight, view your history grouped by day, and track weekly stats. Data is saved locally in the browser via `localStorage`.
+A React and Vite workout tracker backed by the Express API and MongoDB. Users can create an account, sign in from another browser, and retrieve their profile and workout history.
 
 ## Features
 
@@ -8,7 +8,7 @@ A simple workout tracker built with React and Vite. Log exercises with sets, rep
 - History grouped by day, most recent first
 - Delete individual entries
 - Stats bar: total workouts logged, workouts this week, total volume
-- Persists between sessions using `localStorage`
+- Persists profiles and workouts in MongoDB through authenticated API requests
 
 ## Getting Started
 

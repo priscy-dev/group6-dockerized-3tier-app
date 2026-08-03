@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-images.yml
+    with:
+      aws_region: ${{ vars.AWS_REGION }}
+      role_arn: ${{ vars.AWS_ROLE_ARN }}
+      frontend_repository: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+      backend_repository: ${{ vars.ECR_BACKEND_REPOSITORY }}
+      release_tag: ${{ github.sha }}
+  deploy:
+    needs: build
+    uses: ./.github/workflows/deploy.yml
+    with:
+      aws_region: ${{ vars.AWS_REGION }}
+      role_arn: ${{ vars.AWS_ROLE_ARN }}
+      application_instance_id: ${{ vars.APPLICATION_INSTANCE_ID }}
+      application_url: ${{ vars.APPLICATION_URL }}
+      frontend_repository: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+      backend_repository: ${{ vars.ECR_BACKEND_REPOSITORY }}
+      release_tag: ${{ github.sha }}
+
