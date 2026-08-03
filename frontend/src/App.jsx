@@ -60,7 +60,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header className="topbar"><a className="brand" href="/">FORGE<span>.</span></a><div className="user-nav"><span>{profile.name}</span><button onClick={logout}>Sign out</button></div></header>
+      <header className="topbar"><a className="brand" href="/">Juwon Fitness Tracker</a><div className="user-nav"><span>{profile.name}</span><button onClick={logout}>Sign out</button></div></header>
       <main className="dashboard">
         <section className="hero"><div><span className="eyebrow">Your training dashboard</span><h1>Welcome back, {profile.name.split(' ')[0]}.</h1><p>Every session is saved to your account and available wherever you sign in.</p></div><div className="profile-chip"><strong>{profile.weight} kg</strong><span>Current body weight</span></div></section>
         {error && <p className="form-error" role="alert">{error}</p>}

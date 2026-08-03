@@ -22,7 +22,7 @@ export function AuthPanel({ onLogin, onRegister, error }) {
   return (
     <main className="auth-shell">
       <section className="auth-copy">
-        <a className="brand light" href="/">FORGE<span>.</span></a>
+        <a className="brand light" href="/">Juwon Fitness Tracker</a>
         <div><span className="eyebrow">Train with intention</span><h1>Progress that follows you.</h1><p>Your profile, training plan, and workout history are securely saved to your account.</p></div>
         <div className="proof-list"><span>✓ Persistent workout history</span><span>✓ Personalized five-day plan</span><span>✓ Private account access</span></div>
       </section>
