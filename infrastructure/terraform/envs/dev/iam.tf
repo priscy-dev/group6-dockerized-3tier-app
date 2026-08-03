@@ -118,7 +118,7 @@ data "aws_iam_policy_document" "github_deploy" {
   statement {
     actions = [
       "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:CompleteLayerUpload",
-      "ecr:GetDownloadUrlForLayer", "ecr:InitiateLayerUpload",
+      "ecr:DescribeImages", "ecr:GetDownloadUrlForLayer", "ecr:InitiateLayerUpload",
       "ecr:PutImage", "ecr:UploadLayerPart"
     ]
     resources = [aws_ecr_repository.frontend.arn, aws_ecr_repository.backend.arn]
