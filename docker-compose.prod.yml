@@ -1,8 +1,43 @@
-# Production Docker Compose configuration for deployment on remote VM
+# Manual production-equivalent deployment. The Terraform deployment uses the
+# same two images through /usr/local/bin/deploy-fitness-app on the application
+# EC2 instance. MongoDB runs separately on the private database instance.
 services:
+  backend:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to the immutable ECR image URI}
+    container_name: fitness_backend
+    environment:
+      NODE_ENV: production
+      PORT: 7000
+      HOST: 0.0.0.0
+      CLIENT_URL: ${CLIENT_URL:?Set CLIENT_URL to the public HTTPS URL}
+      RELEASE_VERSION: ${RELEASE_VERSION:-manual}
+      FRONTEND_IMAGE: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to the immutable ECR image URI}
+      BACKEND_IMAGE: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to the immutable ECR image URI}
+      DEPLOYED_AT: ${DEPLOYED_AT:-unknown}
+    volumes:
+      - ${SECRETS_DIR:-/opt/fitness/secrets}:/run/secrets:ro
+      - ${APP_CONFIG_PATH:-/opt/fitness/config/app_config}:/run/configs/app_config:ro
+    networks:
+      fitness:
+        aliases: [backend]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
   frontend:
-    image: ${DOCKERHUB_USERNAME}/fitness-frontend:${IMAGE_TAG:-latest}
-    container_name: fitness_frontend_prod
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to the immutable ECR image URI}
+    container_name: fitness_frontend
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
       - "80:80"
+    networks: [fitness]
     restart: unless-stopped
+
+networks:
+  fitness:
+    name: fitness

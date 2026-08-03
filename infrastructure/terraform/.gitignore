@@ -2,10 +2,9 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+terraform.tfvars
 crash.log
-crash.*.log
-*.tfvars
-!*.tfvars.example
-.env
-*.pem
-*.key
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

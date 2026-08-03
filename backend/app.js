@@ -38,6 +38,15 @@ app.use(
 
 app.get("/health", (_req, res) => res.status(200).json({ status: "ok" }));
 
+app.get("/version", (_req, res) => {
+  res.status(200).json({
+    version: process.env.RELEASE_VERSION || "development",
+    frontendImage: process.env.FRONTEND_IMAGE || "local-build",
+    backendImage: process.env.BACKEND_IMAGE || "local-build",
+    deployedAt: process.env.DEPLOYED_AT || null,
+  });
+});
+
 //Body Prasing
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
