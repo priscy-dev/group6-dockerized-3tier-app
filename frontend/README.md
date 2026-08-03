@@ -1,4 +1,4 @@
-# Fitness Tracker
+# Juwon Fitness Tracker
 
 A React and Vite workout tracker backed by the Express API and MongoDB. Users can create an account, sign in from another browser, and retrieve their profile and workout history.
 
