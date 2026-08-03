@@ -1,250 +1,219 @@
-# =============================================================================
-# Fitness Tracker Frontend -- CI/CD Pipeline
-# =============================================================================
-# Workflow Stages:
-#   validate ---> build-and-push ---> deploy
-#
-# TRIGGER MATRIX:
-#   * Pull request to main or ci-cd: Validate stage only (lint + build check).
-#   * Push to main or ci-cd:         Validate -> Build & Push -> Deploy.
-#   * Manual run (workflow_dispatch): Deploy only, using a specified git short SHA
-#                                    to execute an instant ROLLBACK.
-#
-# GITHUB SECRETS REQUIRED
-#
-# Docker Hub
-#   DOCKERHUB_USERNAME : Docker Hub username
-#   DOCKERHUB_TOKEN    : Docker Hub Personal Access Token
-#
-# AWS EC2
-#   EC2_HOST           : Public IPv4 or Public DNS of the EC2 instance
-#   EC2_USER           : SSH username (ubuntu for Ubuntu, ec2-user for Amazon Linux)
-#   EC2_SSH_KEY        : Private SSH key (.pem file contents)
-#   EC2_SSH_PORT       : Optional (defaults to 22)
-# =============================================================================
-
-name: CI/CD Pipeline
+name: Build and deploy three-tier application
 
 on:
-  push:
-    branches: [main, ci-cd]
-
   pull_request:
     branches: [main, ci-cd]
-
+  push:
+    branches: [main, ci-cd]
   workflow_dispatch:
     inputs:
       rollback_tag:
-        description: "Docker image tag (git short SHA) to deploy"
+        description: Existing ECR image tag to redeploy
         required: true
         type: string
 
-env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/fitness-frontend
+permissions:
+  contents: read
+  id-token: write
 
 concurrency:
-  group: cicd-${{ github.ref }}
+  group: fitness-deploy-${{ github.ref }}
   cancel-in-progress: false
 
-jobs:
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+  BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
 
-  # ===========================================================================
-  # STAGE 1 - VALIDATE
-  # ===========================================================================
+jobs:
   validate:
-    name: Lint & Build Frontend
+    name: Validate application
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: ./frontend
-
     steps:
+      - uses: actions/checkout@v4
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
+        working-directory: frontend
         run: npm ci
 
-      - name: Run ESLint
+      - name: Lint frontend
+        working-directory: frontend
         run: npm run lint
 
-      - name: Verify production build
+      - name: Build frontend
+        working-directory: frontend
         run: npm run build
 
-  # ===========================================================================
-  # STAGE 2 - BUILD & PUSH
-  # ===========================================================================
-  build-and-push:
+      - name: Verify backend container build
+        run: docker build --file backend/Dockerfile --tag fitness-backend:validation backend
 
-    name: Build & Push Docker Image
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
 
+      - name: Check Terraform formatting
+        run: terraform -chdir=infrastructure/terraform/envs/dev fmt -check -recursive
+
+      - name: Initialize Terraform without remote state
+        run: terraform -chdir=infrastructure/terraform/envs/dev init -backend=false
+
+      - name: Validate Terraform
+        run: terraform -chdir=infrastructure/terraform/envs/dev validate
+
+  build_and_push:
+    name: Build and push frontend and backend
     needs: validate
-
-    if: github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' ||
-       github.ref == 'refs/heads/ci-cd')
-
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-
     outputs:
-      image_tag: ${{ steps.vars.outputs.sha }}
-
+      image_tag: ${{ steps.release.outputs.tag }}
     steps:
+      - uses: actions/checkout@v4
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Generate image version
-        id: vars
-        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Build and Push Docker Image
+      - name: Sign in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Generate immutable release tag
+        id: release
+        shell: bash
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-
+          context: frontend
+          file: frontend/Dockerfile
           push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.FRONTEND_REPOSITORY }}:${{ steps.release.outputs.tag }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.sha }}
-            ${{ env.IMAGE_NAME }}:latest
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.BACKEND_REPOSITORY }}:${{ steps.release.outputs.tag }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
 
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ===========================================================================
-  # STAGE 3 - DEPLOY TO AWS EC2
-  # ===========================================================================
   deploy:
-
-    name: Deploy to AWS EC2
-
-    needs: build-and-push
-
-    if: >
+    name: Deploy release through AWS Systems Manager
+    needs: build_and_push
+    if: |
       always() &&
-      (
-        (github.event_name == 'push' &&
-        needs.build-and-push.result == 'success')
-        ||
-        github.event_name == 'workflow_dispatch'
-      )
-
+      ((github.event_name == 'push' && needs.build_and_push.result == 'success') ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-
+    environment:
+      name: production
+      url: ${{ vars.APPLICATION_URL }}
     steps:
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Resolve deployment tag
-        id: tag
-
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          BUILT_TAG: ${{ needs.build_and_push.outputs.image_tag }}
+          ROLLBACK_TAG: ${{ inputs.rollback_tag }}
         run: |
-          TAG="${{ github.event.inputs.rollback_tag || needs.build-and-push.outputs.image_tag }}"
-
-          if [ -z "$TAG" ]; then
-            echo "::error::No deployment tag supplied."
-            exit 1
-          fi
-
+          TAG="${ROLLBACK_TAG:-$BUILT_TAG}"
+          test -n "$TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Copy docker-compose to EC2
-        uses: appleboy/scp-action@v0.1.7
-
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_SSH_PORT || 22 }}
-
-          source: docker-compose.prod.yml
-          target: ~/app
-
-      - name: Deploy on EC2
-        uses: appleboy/ssh-action@v1.0.3
-
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_SSH_PORT || 22 }}
-
-          envs: IMAGE_TAG,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
-
-          script: |
-            set -e
-
-            mkdir -p ~/app
-
-            cd ~/app
-
-            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-
-            export IMAGE_TAG
-            export DOCKERHUB_USERNAME
-
-            docker compose -f docker-compose.prod.yml pull
-
-            docker compose -f docker-compose.prod.yml up -d
-
-            echo "$IMAGE_TAG" > CURRENT_VERSION
-
-            docker image prune -f
-
-            docker logout
-
-            echo "===== Current Version ====="
-
-            cat CURRENT_VERSION
-
-            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
-
+      - name: Start deployment on private application instance
+        id: command
+        shell: bash
         env:
-          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Deployment Smoke Test
+          INSTANCE_ID: ${{ vars.APPLICATION_INSTANCE_ID }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          for i in $(seq 1 12); do
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy fitness release $RELEASE_TAG" \
+            --parameters "commands=['sudo /usr/local/bin/deploy-fitness-app $RELEASE_TAG']" \
+            --query 'Command.CommandId' \
+            --output text)
+          echo "id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
 
-            if curl -fsS "http://${{ secrets.EC2_HOST }}" >/dev/null; then
-              echo "Deployment successful!"
+      - name: Wait for deployment command
+        env:
+          INSTANCE_ID: ${{ vars.APPLICATION_INSTANCE_ID }}
+          COMMAND_ID: ${{ steps.command.outputs.id }}
+        run: aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"
+
+      - name: Show deployment result
+        env:
+          INSTANCE_ID: ${{ vars.APPLICATION_INSTANCE_ID }}
+          COMMAND_ID: ${{ steps.command.outputs.id }}
+        run: |
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
+
+      - name: Verify public application health
+        env:
+          APPLICATION_URL: ${{ vars.APPLICATION_URL }}
+        run: |
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error "$APPLICATION_URL/health"; then
               exit 0
             fi
-
-            echo "Waiting for application..."
-
-            sleep 5
-
+            sleep 10
           done
-
-          echo "::error::Deployment failed."
-
+          echo "Application health check failed" >&2
           exit 1
+
+      - name: Read deployed version metadata
+        id: metadata
+        env:
+          APPLICATION_URL: ${{ vars.APPLICATION_URL }}
+        run: |
+          VERSION_JSON=$(curl --fail --silent --show-error "$APPLICATION_URL/version")
+          echo "json=$VERSION_JSON" >> "$GITHUB_OUTPUT"
+          echo "$VERSION_JSON" | jq .
+
+      - name: Publish deployment summary
+        env:
+          APPLICATION_URL: ${{ vars.APPLICATION_URL }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          VERSION_JSON: ${{ steps.metadata.outputs.json }}
+        run: |
+          FRONTEND_IMAGE=$(echo "$VERSION_JSON" | jq -r .frontendImage)
+          BACKEND_IMAGE=$(echo "$VERSION_JSON" | jq -r .backendImage)
+          DEPLOYED_AT=$(echo "$VERSION_JSON" | jq -r .deployedAt)
+          {
+            echo "## Production deployment"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Release | \`$RELEASE_TAG\` |"
+            echo "| Frontend | \`$FRONTEND_IMAGE\` |"
+            echo "| Backend | \`$BACKEND_IMAGE\` |"
+            echo "| Deployed at | $DEPLOYED_AT |"
+            echo "| Application | $APPLICATION_URL |"
+            echo "| Version endpoint | $APPLICATION_URL/version |"
+          } >> "$GITHUB_STEP_SUMMARY"

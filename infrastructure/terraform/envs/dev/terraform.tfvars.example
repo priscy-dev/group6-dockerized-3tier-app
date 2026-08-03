@@ -3,12 +3,8 @@ project_name   = "fitness-tracker"
 environment    = "dev"
 vpc_cidr       = "10.20.0.0/16"
 
-# Replace with your current public IP, for example "203.0.113.10/32".
-admin_cidr = "YOUR_PUBLIC_IP/32"
-
-# Paste public-key content only. Never put windowskeys.pem content here.
-ssh_public_key = "ssh-ed25519 AAAA... your-name"
-
 application_domain_name = "juwonfitness.wisdomuwadiae.com"
 route53_hosted_zone_id  = "Z07705643VYPNGIJPX8DD"
-application_image_tag   = "v1"
+
+# Replace with the repository that contains this workflow.
+github_repository = "YOUR_GITHUB_OWNER/group6-dockerized-3tier-app"
